@@ -26,11 +26,27 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Cache MoonBit toolchain
+        id: cache-moon
+        uses: actions/cache@v4
+        with:
+          path: ~/.moon
+          key: ${{ runner.os }}-moon-${{ env.MOON_VERSION }}
+
       - name: Install MoonBit
+        if: steps.cache-moon.outputs.cache-hit != 'true'
         run: |
           export PATH="$HOME/.moon/bin:$PATH"
           curl -fsSL https://cli.moonbitlang.com/install/unix.sh | bash -s -- "${MOON_VERSION}"
-          echo "$HOME/.moon/bin" >> "$GITHUB_PATH"
+
+      - name: Add moon to PATH
+        run: echo "$HOME/.moon/bin" >> "$GITHUB_PATH"
+
+      - name: Cache mooncakes
+        uses: actions/cache@v4
+        with:
+          path: .mooncakes
+          key: ${{ runner.os }}-mooncakes-${{ hashFiles('moon.mod.json') }}
 
       - name: Verify
         run: |
@@ -78,4 +94,3 @@ jobs:
             artifacts/*.tar.gz
             artifacts/SHA256SUMS
           generate_release_notes: true
-
