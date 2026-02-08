@@ -1,2 +1,12 @@
-doc/DESIGN.md
+# MacOS
+.DS_Store
+
+# moonbit
+_build/
+target/
+.mooncakes/
+.moonagent/
+.moon_tmp2/
+
+# codex
 CONTINUITY.md
