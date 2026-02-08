@@ -1,0 +1,81 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  MOON_VERSION: "0.1.20260126"
+
+jobs:
+  build:
+    name: Build (${{ matrix.asset_suffix }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-latest
+            asset_suffix: linux-x64
+          - runner: macos-14
+            asset_suffix: macos-arm64
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install MoonBit
+        run: |
+          export PATH="$HOME/.moon/bin:$PATH"
+          curl -fsSL https://cli.moonbitlang.com/install/unix.sh | bash -s -- "${MOON_VERSION}"
+          echo "$HOME/.moon/bin" >> "$GITHUB_PATH"
+
+      - name: Verify
+        run: |
+          moon check --target native --deny-warn --fmt
+          moon test --target native
+          bash scripts/e2e.sh
+
+      - name: Build native release
+        run: moon build --target native --release cli
+
+      - name: Package
+        run: |
+          version="${GITHUB_REF_NAME}"
+          asset="mcp-cli-${version}-${{ matrix.asset_suffix }}.tar.gz"
+          mkdir -p dist
+          cp _build/native/release/build/cli/cli.exe dist/mcp-cli
+          chmod +x dist/mcp-cli
+          tar -czf "$asset" -C dist mcp-cli
+          echo "ASSET=$asset" >> "$GITHUB_ENV"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.ASSET }}
+          path: ${{ env.ASSET }}
+
+  release:
+    name: GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Generate SHA256SUMS
+        run: |
+          cd artifacts
+          sha256sum *.tar.gz > SHA256SUMS
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            artifacts/*.tar.gz
+            artifacts/SHA256SUMS
+          generate_release_notes: true
+
