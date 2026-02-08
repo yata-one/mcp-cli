@@ -1,11 +1,20 @@
 name: Release
 
 on:
+  workflow_dispatch:
   push:
     tags: ["v*"]
 
-permissions:
-  contents: write
+# Disable all permissions at the workflow level (set minimal at job level)
+permissions: {}
+
+defaults:
+  run:
+    shell: bash
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 env:
   MOON_VERSION: "0.1.20260126"
@@ -17,17 +26,24 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - runner: ubuntu-latest
+          - runner: ubuntu-22.04
             asset_suffix: linux-x64
           - runner: macos-14
             asset_suffix: macos-arm64
     runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      actions: write # required to save caches and upload artifacts
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
 
       - name: Cache MoonBit toolchain
         id: cache-moon
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: ~/.moon
           key: ${{ runner.os }}-moon-${{ env.MOON_VERSION }}
@@ -35,29 +51,36 @@ jobs:
       - name: Install MoonBit
         if: steps.cache-moon.outputs.cache-hit != 'true'
         run: |
+          set -euxo pipefail
           export PATH="$HOME/.moon/bin:$PATH"
           curl -fsSL https://cli.moonbitlang.com/install/unix.sh | bash -s -- "${MOON_VERSION}"
 
       - name: Add moon to PATH
-        run: echo "$HOME/.moon/bin" >> "$GITHUB_PATH"
+        run: |
+          set -euxo pipefail
+          echo "$HOME/.moon/bin" >> "$GITHUB_PATH"
 
       - name: Cache mooncakes
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: .mooncakes
           key: ${{ runner.os }}-mooncakes-${{ hashFiles('moon.mod.json') }}
 
       - name: Verify
         run: |
+          set -euxo pipefail
           moon check --target native --deny-warn --fmt
           moon test --target native
           bash scripts/e2e.sh
 
       - name: Build native release
-        run: moon build --target native --release cli
+        run: |
+          set -euxo pipefail
+          moon build --target native --release cli
 
       - name: Package
         run: |
+          set -euxo pipefail
           version="${GITHUB_REF_NAME}"
           asset="mcp-cli-${version}-${{ matrix.asset_suffix }}.tar.gz"
           mkdir -p dist
@@ -66,7 +89,7 @@ jobs:
           tar -czf "$asset" -C dist mcp-cli
           echo "ASSET=$asset" >> "$GITHUB_ENV"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: ${{ env.ASSET }}
           path: ${{ env.ASSET }}
@@ -74,22 +97,39 @@ jobs:
   release:
     name: GitHub Release
     needs: build
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      actions: read
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           path: artifacts
           merge-multiple: true
 
       - name: Generate SHA256SUMS
         run: |
+          set -euxo pipefail
           cd artifacts
           sha256sum *.tar.gz > SHA256SUMS
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@a06a81a03ee405af7f2048a818ed3f03bbf83c7b # v2.5.0
         with:
           files: |
             artifacts/*.tar.gz
             artifacts/SHA256SUMS
           generate_release_notes: true
+
+  action-timeline:
+    name: Show workflow timeline
+    needs: release
+    runs-on: ubuntu-22.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - name: actions-timeline
+        uses: Kesin11/actions-timeline@a7eaabf426cdae26c3582c3fa674b897170dec8f # v2.2.4
