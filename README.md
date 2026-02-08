@@ -22,19 +22,67 @@ A lightweight, MoonBit-based CLI for interacting with MCP (Model Context Protoco
 
 ### 1. Installation
 
-via shell script:
+Supported platforms:
+- Linux (x86_64)
+- macOS (Apple Silicon / arm64)
+
+via shell (download from GitHub Releases):
 
 ```sh
+curl -fsSL https://raw.githubusercontent.com/yata-one/mcp-cli/main/install.sh | bash
+
+# Install a specific version
+curl -fsSL https://raw.githubusercontent.com/yata-one/mcp-cli/main/install.sh | bash -s -- --version v0.1.0
 ```
 
-via mise (github backend)
+via mise (github backend):
 
 ```sh
+mise use -g github:yata-one/mcp-cli@latest
+mcp-cli --help
 ```
 
-via nix
+via nix:
+
+```sh
+nix run github:yata-one/mcp-cli
+
+# With args:
+# nix run github:yata-one/mcp-cli -- --help
+```
+
+Note: the Nix flake provides a small wrapper that downloads a GitHub Release binary on first run (cached under `$XDG_CACHE_HOME/mcp-cli`).
+
+Use from another `flake.nix` (e.g. nix-darwin):
 
 ```nix
+{
+  inputs = {
+    nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
+    nix-darwin.url = "github:LnL7/nix-darwin";
+    nix-darwin.inputs.nixpkgs.follows = "nixpkgs";
+
+    mcp-cli.url = "github:yata-one/mcp-cli";
+    mcp-cli.inputs.nixpkgs.follows = "nixpkgs";
+  };
+
+  outputs = { self, nixpkgs, nix-darwin, mcp-cli, ... }:
+    let
+      system = "aarch64-darwin";
+    in
+    {
+      darwinConfigurations.my-mac = nix-darwin.lib.darwinSystem {
+        inherit system;
+        modules = [
+          ({ ... }: {
+            environment.systemPackages = [
+              mcp-cli.packages.${system}.default
+            ];
+          })
+        ];
+      };
+    };
+}
 ```
 
 ### 2. Create a config file
