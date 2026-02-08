@@ -189,7 +189,7 @@ moon test --target native
 # E2E Test (via shell script)
 bash scripts/e2e.sh
 # Typecheck & Lint
-moon check
+moon check --target native --deny-warn --fmt
 # Format
 moon fmt
 ```
