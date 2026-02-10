@@ -159,7 +159,7 @@ cat >"$cfg" <<EOF
 {
   // JSONC + trailing commas
   "mcpServers": {
-    "srv": { "url": "http://localhost:$port/mcp", },
+    "srv": { "url": "http://127.0.0.1:$port/mcp", },
   },
 }
 EOF
@@ -177,7 +177,7 @@ mkdir -p "$home/.agents/skills/test-skill"
 cat >"$home/.agents/skills/test-skill/mcp-cli.jsonc" <<EOF
 {
   "mcpServers": {
-    "srv": { "url": "http://localhost:$port/mcp" }
+    "srv": { "url": "http://127.0.0.1:$port/mcp" }
   }
 }
 EOF
@@ -192,7 +192,7 @@ mkdir -p "$proj/.git" "$proj/.agents" "$proj/sub"
 cat >"$proj/.agents/mcp-cli.jsonc" <<EOF
 {
   "mcpServers": {
-    "srv": { "url": "http://localhost:$port/mcp" }
+    "srv": { "url": "http://127.0.0.1:$port/mcp" }
   }
 }
 EOF
@@ -235,10 +235,10 @@ PY
 )"
 bad="$tmp/bad.json"
 cat >"$bad" <<EOF
-{ "mcpServers": { "bad": { "url": "http://localhost:$unused_port/mcp" } } }
+{ "mcpServers": { "bad": { "url": "http://127.0.0.1:$unused_port/mcp" } } }
 EOF
 set +e
-"${env_cmd[@]}" "$cli" -c "$bad" >/dev/null 2>&1
+"${env_cmd[@]}" "$cli" -c "$bad" info bad >/dev/null 2>&1
 code="$?"
 set -e
 [[ "$code" == "3" ]]
