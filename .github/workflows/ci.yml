@@ -29,9 +29,6 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
-env:
-  MOON_VERSION: "0.1.20260126"
-
 jobs:
   test:
     runs-on: ubuntu-22.04
@@ -50,20 +47,23 @@ jobs:
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: ~/.moon
-          key: ${{ runner.os }}-moon-${{ env.MOON_VERSION }}
+          key: ${{ runner.os }}-moon
 
       - name: Install MoonBit
         if: steps.cache-moon.outputs.cache-hit != 'true'
         run: |
           set -euxo pipefail
           export PATH="$HOME/.moon/bin:$PATH"
-          curl -fsSL https://cli.moonbitlang.com/install/unix.sh | bash -s -- "${MOON_VERSION}"
-
+          curl -fsSL https://cli.moonbitlang.com/install/unix.sh | bash
+      
       - name: Add moon to PATH
         run: |
           set -euxo pipefail
           echo "$HOME/.moon/bin" >> "$GITHUB_PATH"
 
+      - name: Moon update
+        run: moon update
+      
       - name: Cache mooncakes
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
@@ -80,7 +80,7 @@ jobs:
           set -euxo pipefail
           moon test --target native
 
-      - name: e2e
+      - name: e2e test
         run: |
           set -euxo pipefail
           bash scripts/e2e.sh
