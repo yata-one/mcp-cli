@@ -1,6 +1,6 @@
 ///|
 fn main {
-  @async.run_async_main(fn() { run() })
+  @async.run_async_main(() => run())
 }
 
 ///|
@@ -58,7 +58,7 @@ async fn require_server_or_die(
 ///|
 async fn run() -> Unit {
   let argv = @sys.get_cli_args()
-  let args = if argv.is_empty() { [] } else { argv.sub(start=1).to_array() }
+  let args = if argv.is_empty() { [] } else { argv[1:].to_array() }
   let parsed = parse_args(args) catch { err => die(1, format_cli_error(err)) }
   let settings = settings_from_env(@sys.get_env_vars()) catch {
     err => die(1, format_cli_error(err))
@@ -136,9 +136,9 @@ async fn cmd_list(settings : Settings, config_path : String?) -> Unit {
     eprintln("Warning: no servers configured")
     return ()
   }
-  let servers = map_limit(names, settings.concurrency, fn(name) {
+  let servers = map_limit(names, settings.concurrency, name => {
     let server = cfg.servers.get(name).unwrap()
-    let result : Result[ServerView, _] = try? {
+    let result : Result[ServerView, _] = try? ({
       let (tools, instructions) = list_tools_with_meta(settings, server)
       let views = tools
         .filter(t => is_tool_allowed(t.name, server))
@@ -147,7 +147,7 @@ async fn cmd_list(settings : Settings, config_path : String?) -> Unit {
         None => server_view(name, views)
         Some(text) => server_view(name, views, instructions=text)
       }
-    }
+    })
     match result {
       Ok(view) => view
       Err(err) =>
@@ -180,7 +180,7 @@ async fn cmd_info(
 ) -> Unit {
   let cfg = load_config_or_die(settings.debug, config_path)
   let server = require_server_or_die(cfg, server_name)
-  let result : Result[Unit, _] = try? {
+  let result : Result[Unit, _] = try? ({
     let (tools, instructions) = list_tools_with_meta(settings, server)
     let views = tools
       .filter(t => is_tool_allowed(t.name, server))
@@ -203,7 +203,7 @@ async fn cmd_info(
           Some(tool) => println(format_tool_schema(server_name, tool))
         }
     }
-  }
+  })
   match result {
     Ok(_) => ()
     Err(err) => {
@@ -234,15 +234,15 @@ async fn cmd_grep(
     eprintln("Warning: no servers configured")
     return ()
   }
-  let outcomes = map_limit(names, settings.concurrency, fn(name) {
+  let outcomes = map_limit(names, settings.concurrency, name => {
     let server = cfg.servers.get(name).unwrap()
-    let r : Result[Array[ToolView], _] = try? {
+    let r : Result[Array[ToolView], _] = try? ({
       let (tools, _) = list_tools_with_meta(settings, server)
       tools
       .filter(t => is_tool_allowed(t.name, server))
       .filter(t => matches_pattern(t.name, pattern))
       .map(to_tool_view)
-    }
+    })
     match r {
       Ok(views) => (name, views, false)
       Err(_) => (name, [], true)
@@ -359,12 +359,12 @@ async fn direct_list_tools_with_meta(
 ) -> (Array[ToolInfo], String?) {
   @async.retry(
     @async.RetryMethod::FixedDelay(settings.retry_delay_ms),
-    fn() {
-      @async.with_timeout(settings.timeout_ms, fn() {
+    () => {
+      @async.with_timeout(settings.timeout_ms, () => {
         match server.transport {
           Transport::Http(url, headers) => list_tools_http(url, headers)
           Transport::Stdio(command, args, env, cwd) =>
-            @async.with_task_group(fn(group) {
+            @async.with_task_group(group => {
               list_tools_stdio(group, command, args, env, cwd)
             })
         }
@@ -380,10 +380,10 @@ async fn[T : McpTransport, U] with_initialized_client(
   client : Client[T],
   op : async (Client[T]) -> U,
 ) -> U {
-  let result : Result[U, _] = try? {
+  let result : Result[U, _] = try? ({
     client.initialize(client_version="0.1.0")
     op(client)
-  }
+  })
   client.close() catch {
     _ => ()
   }
@@ -400,7 +400,7 @@ async fn list_tools_http(
 ) -> (Array[ToolInfo], String?) {
   let transport = http_transport(url, headers)
   let client = client(transport)
-  with_initialized_client(client, fn(client) {
+  with_initialized_client(client, client => {
     let tools = client.list_tools()
     (tools, client.get_instructions())
   })
@@ -416,7 +416,7 @@ async fn[X] list_tools_stdio(
 ) -> (Array[ToolInfo], String?) {
   let transport = connect_stdio(group, command, args, env, cwd)
   let client = client(transport)
-  with_initialized_client(client, fn(client) {
+  with_initialized_client(client, client => {
     let tools = client.list_tools()
     (tools, client.get_instructions())
   })
@@ -459,13 +459,13 @@ async fn direct_call_tool(
 ) -> Json {
   @async.retry(
     @async.RetryMethod::FixedDelay(settings.retry_delay_ms),
-    fn() {
-      @async.with_timeout(settings.timeout_ms, fn() {
+    () => {
+      @async.with_timeout(settings.timeout_ms, () => {
         match server.transport {
           Transport::Http(url, headers) =>
             call_tool_http(url, headers, tool_name, args_json)
           Transport::Stdio(command, args, env, cwd) =>
-            @async.with_task_group(fn(group) {
+            @async.with_task_group(group => {
               call_tool_stdio(
                 group, command, args, env, cwd, tool_name, args_json,
               )
@@ -487,7 +487,7 @@ async fn call_tool_http(
 ) -> Json {
   let transport = http_transport(url, headers)
   let client = client(transport)
-  with_initialized_client(client, fn(client) {
+  with_initialized_client(client, client => {
     client.call_tool(tool_name, args_json)
   })
 }
@@ -504,7 +504,7 @@ async fn[X] call_tool_stdio(
 ) -> Json {
   let transport = connect_stdio(group, command, args, env, cwd)
   let client = client(transport)
-  with_initialized_client(client, fn(client) {
+  with_initialized_client(client, client => {
     client.call_tool(tool_name, args_json)
   })
 }

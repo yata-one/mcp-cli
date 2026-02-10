@@ -4,12 +4,12 @@ async test "pool: http connection is reused (initialize once)" {
   let init = []
   let list = []
   let call = []
-  @async.with_task_group(fn(group) {
+  @async.with_task_group(group => {
     let mcp_server = @http.Server::new(@socket.Addr::parse("127.0.0.1:0"))
     defer mcp_server.close()
     let port = mcp_server.addr().port()
-    group.spawn_bg(no_wait=true, fn() {
-      mcp_server.run_forever(allow_failure=true, fn(_request, body, conn) {
+    group.spawn_bg(no_wait=true, () => {
+      mcp_server.run_forever(allow_failure=true, (_request, body, conn) => {
         let text = body.read_all().text()
         let msg = @json.parse(text)
         let rpc_method = match msg {
@@ -41,7 +41,7 @@ async test "pool: http connection is reused (initialize once)" {
             "content-type": "application/json",
             "Mcp-Session-Id": "sid123",
           })
-          conn..write(resp.stringify())..end_response()
+          conn..write(resp.stringify()).end_response()
         } else if rpc_method == "notifications/initialized" {
           conn.send_response(202, "Accepted")
           conn.end_response()
@@ -59,7 +59,7 @@ async test "pool: http connection is reused (initialize once)" {
           conn.send_response(200, "OK", extra_headers={
             "content-type": "application/json",
           })
-          conn..write(resp.stringify())..end_response()
+          conn..write(resp.stringify()).end_response()
         } else if rpc_method == "tools/call" {
           call.push(())
           let id = match msg {
@@ -74,7 +74,7 @@ async test "pool: http connection is reused (initialize once)" {
           conn.send_response(200, "OK", extra_headers={
             "content-type": "application/json",
           })
-          conn..write(resp.stringify())..end_response()
+          conn..write(resp.stringify()).end_response()
         } else {
           conn.send_response(500, "Unknown")
           conn.end_response()

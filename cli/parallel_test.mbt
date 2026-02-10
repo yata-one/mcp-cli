@@ -4,7 +4,7 @@ async test "map_limit: respects concurrency + preserves order" {
   let items = [1, 2, 3, 4, 5]
   let mut current = 0
   let mut max = 0
-  let results = map_limit(items, 2, fn(x) {
+  let results = map_limit(items, 2, x => {
     current = current + 1
     if current > max {
       max = current

@@ -124,7 +124,7 @@ fn decode_response_messages(
     let text = data.text() catch {
       err => raise TransportError::ReadFailed(err.to_string())
     }
-    decode_sse_data(text).map(fn(s) {
+    decode_sse_data(text).map(s => {
       @json.parse(s) catch {
         err => raise TransportError::InvalidJson(err.to_string())
       }

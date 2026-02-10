@@ -8,7 +8,7 @@ pub using @aio {trait Reader, trait Writer}
 pub async fn run_daemon(settings : Settings) -> Unit {
   let p = pool()
   let state = state_path()
-  @async.with_task_group(fn(group) {
+  @async.with_task_group(group => {
     let server = @socket.TcpServer::new(@socket.Addr::parse("127.0.0.1:0"))
     let port = server.addr().port()
     write_port(state, port) catch {
@@ -21,10 +21,10 @@ pub async fn run_daemon(settings : Settings) -> Unit {
     }
     let last_activity = Ref::new(@async.now())
     let active = Ref::new(0)
-    group.spawn_bg(no_wait=true, fn() {
+    group.spawn_bg(no_wait=true, () => {
       idle_monitor(last_activity, active, settings.daemon_timeout_ms)
     })
-    server.run_forever(max_connections=settings.concurrency, fn(conn, _) {
+    server.run_forever(max_connections=settings.concurrency, (conn, _) => {
       handle_conn(conn, group, p, settings, last_activity, active)
     })
   })

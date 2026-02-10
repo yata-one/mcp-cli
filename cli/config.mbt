@@ -501,7 +501,7 @@ fn envsubst(
       sb.write_char(c)
       continue i + 1
     }
-  } else {
+  } nobreak {
     sb.to_string()
   }
 }
@@ -512,7 +512,7 @@ fn find_closing_brace(view : StringView, start : Int) -> Int? {
     if view.get_char(i) == Some('}') {
       break Some(i)
     }
-  } else {
+  } nobreak {
     None
   }
 }

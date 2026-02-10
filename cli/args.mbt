@@ -87,7 +87,7 @@ pub fn parse_args(argv : Array[String]) -> ParsedArgs raise ArgError {
           continue i + 1
         }
     }
-  } else {
+  } nobreak {
     if positional.is_empty() {
       { command: Command::List, config_path }
     } else {
@@ -103,9 +103,9 @@ fn parse_command(
 ) -> ParsedArgs raise ArgError {
   let first = positional[0]
   match first {
-    "info" => parse_info(positional.sub(start=1), config_path~)
-    "grep" => parse_grep(positional.sub(start=1), config_path~)
-    "call" => parse_call(positional.sub(start=1), config_path~)
+    "info" => parse_info(positional[1:], config_path~)
+    "grep" => parse_grep(positional[1:], config_path~)
+    "call" => parse_call(positional[1:], config_path~)
     _ => {
       if is_possible_subcommand(first) {
         raise ArgError::UnknownSubcommand(first)
@@ -172,7 +172,7 @@ fn looks_like_tool_name(s : String) -> Bool {
       if !is_tool_start(c0) {
         false
       } else {
-        chars.sub(start=1).all(is_tool_rest)
+        chars[1:].all(is_tool_rest)
       }
   }
 }
@@ -230,7 +230,7 @@ fn parse_call(
   match tool {
     None => raise ArgError::MissingArgument("call <server> <tool> [<json>]")
     Some(tool) => {
-      let rest = args.sub(start=consumed).to_array()
+      let rest = args[consumed:].to_array()
       let json_args = if rest.is_empty() {
         None
       } else {

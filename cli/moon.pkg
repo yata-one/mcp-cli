@@ -1,0 +1,17 @@
+import {
+  "moonbitlang/async" @async,
+  "moonbitlang/async/http" @http,
+  "moonbitlang/async/io" @aio,
+  "moonbitlang/async/process" @process,
+  "moonbitlang/async/socket" @socket,
+  "moonbitlang/core/json" @json,
+  "moonbitlang/core/strconv" @strconv,
+  "moonbitlang/async/stdio" @stdio,
+  "moonbitlang/x/fs" @fs,
+  "moonbitlang/x/path" @path,
+  "moonbitlang/x/sys" @sys,
+}
+
+options(
+  "is-main": true,
+)

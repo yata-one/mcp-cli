@@ -2,12 +2,12 @@
 #cfg(all(target="native", not(platform="windows")))
 async test "http transport: session id + sse response" {
   let log = []
-  @async.with_task_group(fn(group) {
+  @async.with_task_group(group => {
     let server = @http.Server::new(@socket.Addr::parse("127.0.0.1:0"))
     defer server.close()
     let port = server.addr().port()
-    group.spawn_bg(no_wait=true, fn() {
-      server.run_forever(allow_failure=true, fn(request, body, conn) {
+    group.spawn_bg(no_wait=true, () => {
+      server.run_forever(allow_failure=true, (request, body, conn) => {
         let text = body.read_all().text()
         let msg = @json.parse(text)
         let rpc_method = match msg {
@@ -37,7 +37,7 @@ async test "http transport: session id + sse response" {
             "content-type": "application/json",
             "Mcp-Session-Id": "sid123",
           })
-          conn..write(resp.stringify())..end_response()
+          conn..write(resp.stringify()).end_response()
         } else if rpc_method == "notifications/initialized" {
           conn.send_response(202, "Accepted")
           conn.end_response()
@@ -67,7 +67,7 @@ async test "http transport: session id + sse response" {
           conn.send_response(200, "OK", extra_headers={
             "content-type": "text/event-stream",
           })
-          conn..write(sse)..end_response()
+          conn..write(sse).end_response()
         } else {
           conn.send_response(500, "Unknown")
           conn.end_response()

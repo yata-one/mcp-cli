@@ -71,7 +71,7 @@ fn strip_comments(input : String) -> String raise JsoncError {
           continue i + 1, state, false
         }
     }
-  } else {
+  } nobreak {
     match state {
       CommentState::BlockComment => raise JsoncError::UnterminatedBlockComment
       CommentState::InString => raise JsoncError::UnterminatedString
@@ -112,7 +112,7 @@ fn strip_trailing_commas(input : String) -> String raise JsoncError {
       sb.write_char(c)
       continue i + 1, in_string, false
     }
-  } else {
+  } nobreak {
     if in_string {
       raise JsoncError::UnterminatedString
     }
@@ -130,7 +130,7 @@ fn is_trailing_comma(view : StringView, comma_index : Int) -> Bool {
       ']' | '}' => break true
       _ => break false
     }
-  } else {
+  } nobreak {
     false
   }
 }
