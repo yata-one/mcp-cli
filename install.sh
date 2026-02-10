@@ -42,8 +42,14 @@ done
 if [ -z "${version}" ]; then
   version="$(
     curl -fsSL "https://api.github.com/repos/${repo}/releases/latest" \
-    | sed -n 's/.*"tag_name": "\\([^"]*\\)".*/\\1/p'
+    | grep -m1 '"tag_name":' \
+    | sed -E 's/.*"tag_name":[[:space:]]*"([^"]+)".*/\1/'
   )"
+fi
+
+if [ -z "${version}" ]; then
+  echo "failed to detect latest release tag; retry with --version <tag>" >&2
+  exit 1
 fi
 
 case "$(uname -s)-$(uname -m)" in
