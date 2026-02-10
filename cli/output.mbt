@@ -35,23 +35,26 @@ pub fn server_view(
 
 ///|
 pub fn format_server_list(servers : Array[ServerView]) -> String {
+  fn first_line(text : String) -> String {
+    match text.find("\n") {
+      None => text
+      Some(i) => text.view(end_offset=i).to_string()
+    }
+  }
+
   let lines = []
   for server in servers {
-    lines.push(server.name)
-    match server.instructions {
-      None => ()
-      Some(text) => {
-        let first_line = match text.find("\n") {
-          None => text
-          Some(i) => text.view(end_offset=i).to_string()
-        }
-        lines.push("  Instructions: " + first_line)
-      }
+    let header = match server.instructions {
+      None => server.name + ":"
+      Some(text) => server.name + ": " + first_line(text)
     }
+    lines.push(header)
+    lines.push("  tools:")
     for tool in server.tools {
+      let name = server.name + "/" + tool.name
       match tool.description {
-        None => lines.push("  • " + tool.name)
-        Some(desc) => lines.push("  • " + tool.name + " - " + desc)
+        None => lines.push("    - " + name)
+        Some(desc) => lines.push("    - " + name + ": " + first_line(desc))
       }
     }
     lines.push("")

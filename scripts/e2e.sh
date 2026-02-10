@@ -168,7 +168,7 @@ env_cmd=(env MCP_NO_DAEMON=1 MCP_MAX_RETRIES=0 MCP_TIMEOUT=2)
 
 echo "[http] list"
 out="$("${env_cmd[@]}" "$cli" -c "$cfg")"
-expected=$'srv\n  Instructions: hello\n  • echo - Echo text\n  • no_text - No text result'
+expected=$'srv: hello\n  tools:\n    - srv/echo: Echo text\n    - srv/no_text: No text result'
 [[ "$out" == "$expected" ]]
 
 echo "[config] skill config discovery"

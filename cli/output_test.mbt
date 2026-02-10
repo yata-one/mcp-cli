@@ -17,13 +17,14 @@ test "format_server_list" {
   inspect(
     out,
     content=(
-      #|s1
-      #|  Instructions: hello
-      #|  • t1 - d1
-      #|  • t2
+      #|s1: hello
+      #|  tools:
+      #|    - s1/t1: d1
+      #|    - s1/t2
       #|
-      #|s2
-      #|  • x - dx
+      #|s2:
+      #|  tools:
+      #|    - s2/x: dx
     ),
   )
 }
