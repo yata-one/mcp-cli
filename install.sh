@@ -1,20 +1,20 @@
-#!/usr/bin/env bash
-set -euo pipefail
+#!/bin/sh
+set -eu
 
-repo="yata-one/mcp-cli"
-bin_dir="${MCP_CLI_BIN_DIR:-${HOME}/.local/bin}"
+repo="yata-one/mcpx"
+bin_dir="${MCPX_BIN_DIR:-${HOME}/.local/bin}"
 version=""
 
 usage() {
-  cat <<'EOF'
+  cat <<'USAGE'
 Usage:
   install.sh [--version <tag>] [--bin-dir <dir>]
 
 Examples:
-  curl -fsSL https://raw.githubusercontent.com/yata-one/mcp-cli/main/install.sh | bash
-  curl -fsSL https://raw.githubusercontent.com/yata-one/mcp-cli/main/install.sh | bash -s -- --version v0.1.0
-  curl -fsSL https://raw.githubusercontent.com/yata-one/mcp-cli/main/install.sh | bash -s -- --bin-dir /usr/local/bin
-EOF
+  curl -fsSL https://raw.githubusercontent.com/yata-one/mcpx/main/install.sh | sh
+  curl -fsSL https://raw.githubusercontent.com/yata-one/mcpx/main/install.sh | sh -s -- --version v0.1.0
+  curl -fsSL https://raw.githubusercontent.com/yata-one/mcpx/main/install.sh | sh -s -- --bin-dir /usr/local/bin
+USAGE
 }
 
 while [ $# -gt 0 ]; do
@@ -61,7 +61,7 @@ case "$(uname -s)-$(uname -m)" in
     ;;
 esac
 
-asset="mcp-cli-${version}-${suffix}.tar.gz"
+asset="mcpx-${version}-${suffix}.tar.gz"
 url="https://github.com/${repo}/releases/download/${version}/${asset}"
 
 tmp="$(mktemp -d)"
@@ -70,35 +70,28 @@ trap 'rm -rf "$tmp"' EXIT
 archive="${tmp}/${asset}"
 curl -fsSL -o "$archive" "$url"
 
-if command -v sha256sum >/dev/null 2>&1; then
-  expected="$(
-    curl -fsSL "https://github.com/${repo}/releases/download/${version}/SHA256SUMS" \
-    | awk -v asset="$asset" '$2==asset {print $1}'
-  )"
-  if [ -n "${expected}" ]; then
+sums="${tmp}/SHA256SUMS"
+expected=""
+if curl -fsSL -o "$sums" "https://github.com/${repo}/releases/download/${version}/SHA256SUMS"; then
+  expected="$(awk -v asset="$asset" '$2==asset {print $1}' "$sums")"
+fi
+if [ -n "${expected}" ]; then
+  if command -v sha256sum >/dev/null 2>&1; then
     actual="$(sha256sum "$archive" | awk '{print $1}')"
-    if [ "$expected" != "$actual" ]; then
-      echo "checksum mismatch for $asset" >&2
-      exit 1
-    fi
-  fi
-elif command -v shasum >/dev/null 2>&1; then
-  expected="$(
-    curl -fsSL "https://github.com/${repo}/releases/download/${version}/SHA256SUMS" \
-    | awk -v asset="$asset" '$2==asset {print $1}'
-  )"
-  if [ -n "${expected}" ]; then
+  elif command -v shasum >/dev/null 2>&1; then
     actual="$(shasum -a 256 "$archive" | awk '{print $1}')"
-    if [ "$expected" != "$actual" ]; then
-      echo "checksum mismatch for $asset" >&2
-      exit 1
-    fi
+  else
+    actual=""
+  fi
+  if [ -n "${actual}" ] && [ "$expected" != "$actual" ]; then
+    echo "checksum mismatch for $asset" >&2
+    exit 1
   fi
 fi
 
 tar -xzf "$archive" -C "$tmp"
 
 mkdir -p "$bin_dir"
-install -m 0755 "$tmp/mcp-cli" "$bin_dir/mcp-cli"
+install -m 0755 "$tmp/mcpx" "$bin_dir/mcpx"
 
-echo "installed: $bin_dir/mcp-cli"
+echo "installed: $bin_dir/mcpx"

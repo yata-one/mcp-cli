@@ -1,210 +1,190 @@
-# mcp-cli
+# mcpx
 
-A lightweight, MoonBit-based CLI for interacting with MCP (Model Context Protocol) servers.
+Lightweight CLI / JS Runtime for the Model Context Protocol built with MoonBit.
+Designed for small bundle size and low memory usage, with short-lived, stateless-by-default MCP discovery and tool calls.
 
-## Features
-
-- Lightweight
-- Single Binary
-- Shell-Friendly
-- Agent-Optimized
-- Universal
-  - **stdio**
-  - **Streamable HTTP** (`application/json` / `text/event-stream`)
-- Connection Pooling
-- Tool Filtering
-- Server Instructions
-- Actionable Errors
-- JSONC Friendly (New)
-- Agent Skill Friendly (New)
-
-## Quick Start
-
-### 1. Installation
-
-Supported platforms:
-- Linux (x86_64)
-- macOS (Apple Silicon / arm64)
-
-via shell (download from GitHub Releases):
+## Installation
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/yata-one/mcp-cli/main/install.sh | bash
-
-# Install a specific version
-curl -fsSL https://raw.githubusercontent.com/yata-one/mcp-cli/main/install.sh | bash -s -- --version v0.1.0
+curl -fsSL https://raw.githubusercontent.com/yata-one/mcpx/main/install.sh | sh
 ```
 
-via mise (github backend):
+Run directly:
 
 ```sh
-mise use -g github:yata-one/mcp-cli@latest
-mcp-cli --help
+nix run github:yata-one/mcpx -- --help
 ```
 
-via nix:
+## Usage
 
 ```sh
-nix run github:yata-one/mcp-cli
+mcpx
+mcpx --help
+mcpx --version
 
-# With args:
-# nix run github:yata-one/mcp-cli -- --help
+mcpx info
+mcpx info <server|mcp-url>
+mcpx info <server|mcp-url> <tool>
+mcpx grep <pattern>
+mcpx call <server|mcp-url> <tool> [arguments-json]
+
+mcpx auth <server>
+mcpx auth <server> --no-browser --json
+mcpx auth <server> --code <code> --state <state>
+
+mcpx daemon status
+mcpx daemon stop
 ```
 
-Note: the Nix flake provides a small wrapper that downloads a GitHub Release binary on first run (cached under `$XDG_CACHE_HOME/mcp-cli`).
+Direct remote MCP URL, no config:
 
-Use from another `flake.nix` (e.g. nix-darwin):
-
-```nix
-{
-  inputs = {
-    nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
-    nix-darwin.url = "github:LnL7/nix-darwin";
-    nix-darwin.inputs.nixpkgs.follows = "nixpkgs";
-
-    mcp-cli.url = "github:yata-one/mcp-cli";
-    mcp-cli.inputs.nixpkgs.follows = "nixpkgs";
-  };
-
-  outputs = { self, nixpkgs, nix-darwin, mcp-cli, ... }:
-    let
-      system = "aarch64-darwin";
-    in
-    {
-      darwinConfigurations.my-mac = nix-darwin.lib.darwinSystem {
-        inherit system;
-        modules = [
-          ({ ... }: {
-            environment.systemPackages = [
-              mcp-cli.packages.${system}.default
-            ];
-          })
-        ];
-      };
-    };
-}
+```sh
+mcpx info https://mcp.example.com/mcp
+mcpx call https://mcp.example.com/mcp search '{"q":"moonbit"}'
 ```
 
-### 2. Create a config file
+Configured server:
 
-Create `mcp-cli.json`:
+```sh
+mcpx info github
+mcpx grep search
+mcpx call github search '{"q":"moonbit"}'
+```
+
+CLI output is human-readable by default. MCP text-content results are printed
+directly; non-text results are printed under `Result:`. `auth --no-browser --json`
+remains JSON for copy/paste and automation handoff.
+
+## Config
+
+`mcpx` reads user config from `~/.config/mcpx/mcpServers.jsonc`.
+`~/.config/mcpx/mcpServers.json` is also supported when the JSONC file is not
+present, but `mcpServers.jsonc` wins when both exist.
+
+The full shape is easiest to understand as one JSONC example:
 
 ```jsonc
 {
   "mcpServers": {
-    "local": {
-      // stdio
-      "command": "npx",
-      "args": ["-y", "mcp_server"],
-      "env": { "API_KEY": "${API_KEY}" },
-      "cwd": "/path/to/project",
-      // tools filter (glob)
-      "allowedTools": ["*"],
-      "disabledTools": ["delete_*"]
+    // Required: server name used by `mcpx info/call/grep`.
+    "github": {
+      // Required: "http" for remote MCP endpoints.
+      "transport": "http",
+      // Required for http: MCP endpoint URL.
+      "url": "https://mcp.github.com/mcp",
+
+      // Optional: extra HTTP headers; ${VAR} is supported.
+      "headers": {
+        "Authorization": "Bearer ${GITHUB_TOKEN}"
+      },
+
+      // Optional: OAuth metadata used by `mcpx auth github`.
+      "auth": {
+        "type": "oauth",
+        "clientId": "${GITHUB_CLIENT_ID}",
+        "clientSecret": "${GITHUB_CLIENT_SECRET}",
+        "metadataUrl": "https://mcp.github.com/.well-known/oauth-authorization-server"
+      },
+
+      // Optional: visible/callable tool allowlist. Glob only.
+      "allowedTools": ["read_*", "list_*", "search_*"],
+      // Optional: denylist applied last; wins conflicts.
+      "disabledTools": ["delete_*", "write_*", "create_*"]
     },
-    "remote": {
-      // Streamable HTTP
-      "url": "https://mcp.example.com/mcp",
-      "headers": { "Authorization": "Bearer ${TOKEN}" },
-      "allowedTools": ["read_*"],
-      "disabledTools": []
+
+    // Required: another server name.
+    "local": {
+      // Required: "stdio" for child-process MCP servers.
+      "transport": "stdio",
+      // Required for stdio: executable.
+      "command": "node",
+      // Optional: executable arguments.
+      "args": ["/path/to/server.js"],
+
+      // Optional: process env; ${VAR} is supported.
+      "env": {
+        "API_TOKEN": "${API_TOKEN}"
+      },
+      // Optional: working directory.
+      "cwd": "/path/to/project",
+
+      // Optional: keep expensive stdio servers warm.
+      "lifecycle": {
+        "mode": "keep-alive",
+        "idleTimeoutMs": 300000
+      }
     }
   }
 }
 ```
 
-Set `mcp-cli.jsonc` in the following directories:
+### Environment values
 
-1. `$HOME/.agents/mcp-cli.json`
-2. `$HOME/.agents/mcp-cli.jsonc`
-3. `{project-root}/.agents/mcp-cli.json`
-4. `{project-root}/.agents/mcp-cli.jsonc`
-5. Assert config file using `--config` or `-c` option:
+`.env` uses simple `KEY=value` lines. Process environment wins over `.env`.
+Only `${VAR}` interpolation is supported; fallback syntax such as
+`${VAR:-fallback}` is intentionally rejected.
 
-```sh
-mcp-cli --config mcp-cli.json
-```
+Interpolation applies to HTTP, OAuth static client fields, and stdio launch fields.
 
-note: `{project-root}` is the location found by tracing from `cwd` to the parent until `.git` is found, or if not found, the `cwd` at execution time.
+### Grep cache
 
-### 3. Discover available tools
+`mcpx grep <pattern>` searches configured server/tool metadata and caches tool
+indexes briefly in `~/.config/mcpx/cache.json`. Cache keys do not include raw
+secrets.
 
-```sh
-# List all servers and tools
-mcp-cli
-```
+### Keep-alive daemon
 
-### 4. Know how to use server and tool
+Public daemon commands are intentionally limited:
 
 ```sh
-mcp-cli info <server>
-mcp-cli info <server> <tool>
-mcp-cli info <server>/<tool>
+mcpx daemon status
+mcpx daemon stop
 ```
 
-### 5. Call a tool
+Keep-alive stdio servers start the daemon automatically when needed. If config or
+environment values change and an existing stdio process should be discarded, run
+`mcpx daemon stop`.
+
+## OAuth
+
+OAuth is explicit: `info` and `call` never open a browser unexpectedly. When auth
+is required, the CLI returns a hint such as `mcpx auth <server>`.
 
 ```sh
-# View tool schema first
-mcp-cli info <server> <tool>
-
-# Call the tool
-mcp-cli call <server> <tool> '{"path": "<path>"}'
+mcpx auth github
+mcpx auth github --no-browser --json
+mcpx auth github --code CODE --state STATE
 ```
 
-### Notes
+`--no-browser --json` prints an authorization URL, callback URL, and state. Open
+the URL manually, then complete with `--code` and `--state`.
 
-#### Exit code
-- `0`: success
-- `1`: client error (arguments/settings)
-- `2`: server/tool error
-- `3`: network/transport error
-
-#### glob（`allowedTools` / `disabledTools` / `grep`）
-
-- `*`: any length
-- `?`: 1 character
-- Case-insensitive for ASCII
-- `disabledTools` takes **priority** (always disabled if matched)
-
-#### Environment Variables
-
-- `MCP_NO_DAEMON=1`: disable daemon (always direct connection)
-- `MCP_DAEMON_TIMEOUT=N`: daemon idle timeout seconds (default: 60)
-- `MCP_TIMEOUT=N`: timeout seconds for each operation (default: 1800)
-- `MCP_CONCURRENCY=N`: number of concurrent servers (default: 5)
-- `MCP_MAX_RETRIES=N`: number of retries (default: 3)
-- `MCP_RETRY_DELAY=N`: retry delay ms (default: 1000)
-- `MCP_DEBUG=1`: debug output (currently just a flag)
-- `MCP_STRICT_ENV=0|false`: make envsubst non-strict
+Credentials are stored in `~/.config/mcpx/credentials.json`. The PKCE verifier is
+stored machine-managed and is not printed.
 
 ## Development
 
-Prerequirements: Moonbit
-
-Dev:
-```bash
-# Test
-moon test --target native
-# E2E Test (via shell script)
-bash scripts/e2e.sh
-# Typecheck & Lint
-moon check --target native --deny-warn --fmt
-# Format
-moon fmt
-```
-
-Build: 
 ```sh
-# Build
-moon build --target native --release cli
+moon fmt
+moon test
+moon check --target native --deny-warn --fmt
+moon check --target wasm-gc
+moon check --target js
+bash scripts/e2e.sh
+bash scripts/benchmark.sh
 ```
 
-## Reference
+## Roadmap
 
+- [ ] publish the JS build as a library package
+- [ ] provide an npm package that downloads/installs the native CLI
+
+## Prior Art
+
+- [openclaw/mcporter](https://github.com/openclaw/mcporter)
+- [evantahler/mcpx](https://github.com/evantahler/mcpx)
+- [AIGC-Hackers/mcpx](https://github.com/AIGC-Hackers/mcpx)
 - [philschmid/mcp-cli](https://github.com/philschmid/mcp-cli)
 
 ## License
-
 MIT
-　

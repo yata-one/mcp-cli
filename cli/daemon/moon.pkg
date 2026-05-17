@@ -1,0 +1,28 @@
+import {
+  "moonbitlang/async" @async,
+  "moonbitlang/async/process" @process,
+  "moonbitlang/async/socket" @socket,
+  "moonbitlang/core/json" @json,
+  "moonbitlang/x/fs" @fs,
+  "moonbitlang/x/sys" @sys,
+  "yata-one/mcpx/core/config" @config,
+  "yata-one/mcpx/core/protocol" @mcp_client,
+  "yata-one/mcpx/native/paths" @app_paths,
+  "yata-one/mcpx/native/stdio" @mcp_stdio,
+  "yata-one/mcpx/native/storage" @storage,
+}
+
+import {
+  "moonbitlang/async",
+  "moonbitlang/x/fs" @fs,
+  "yata-one/mcpx/core/config" @config,
+} for "test"
+
+supported_targets = "native+llvm"
+
+options(
+  targets: {
+    "mcpx_daemon.mbt": [ "native", "llvm" ],
+    "mcpx_daemon_test.mbt": [ "native", "llvm" ],
+  },
+)

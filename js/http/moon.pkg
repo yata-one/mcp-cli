@@ -1,0 +1,22 @@
+import {
+  "moonbitlang/async/js_async" @js_async,
+  "moonbitlang/core/json" @json,
+  "yata-one/mcpx/core/http" @core_http,
+  "yata-one/mcpx/core/protocol" @protocol,
+}
+
+import {
+  "moonbitlang/async",
+} for "test"
+
+supported_targets = "js"
+
+options(
+  link: {
+    "js": {
+      "exports": [ "mcpx_js_list_tools", "mcpx_js_call_tool" ],
+      "format": "esm",
+    },
+  },
+  targets: { "mcp_http.mbt": [ "js" ], "mcp_http_test.mbt": [ "js" ] },
+)

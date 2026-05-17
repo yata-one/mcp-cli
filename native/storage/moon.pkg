@@ -1,0 +1,24 @@
+import {
+  "moonbitlang/core/json" @json,
+  "moonbitlang/x/fs" @fs,
+  "yata-one/mcpx/core/auth" @auth,
+  "yata-one/mcpx/core/config" @config,
+}
+
+import {
+  "moonbitlang/x/fs" @fs,
+} for "test"
+
+supported_targets = "native+llvm"
+
+options(
+  "native-stub": [ "secure_file_native.c" ],
+  targets: {
+    "config_store.mbt": [ "native", "llvm" ],
+    "config_store_test.mbt": [ "native", "llvm" ],
+    "credentials_store.mbt": [ "native", "llvm" ],
+    "credentials_store_test.mbt": [ "native", "llvm" ],
+    "secure_file_native.mbt": [ "native", "llvm" ],
+    "secure_file_test.mbt": [ "native", "llvm" ],
+  },
+)

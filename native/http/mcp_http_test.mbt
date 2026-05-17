@@ -1,0 +1,237 @@
+///|
+#cfg(all(target="native", not(platform="windows")))
+async test "mcp http: initialize then call tool with session" {
+  let seen_session = []
+  @async.with_task_group(group => {
+    let server = @async_http.Server(@socket.Addr::parse("127.0.0.1:0"))
+    defer server.close()
+    let port = server.addr.port()
+    group.spawn_bg(no_wait=true, () => {
+      server.run_forever(allow_failure=true, (request, body, conn) => {
+        let text = body.read_all().text()
+        let msg = @json.parse(text)
+        let rpc_method = match msg {
+          Object(obj) =>
+            match obj.get("method") {
+              Some(String(value)) => value
+              _ => ""
+            }
+          _ => ""
+        }
+        let id = match msg {
+          Object(obj) => obj.get("id").unwrap_or(Json::number(1.0, repr="1"))
+          _ => Json::number(1.0, repr="1")
+        }
+        if rpc_method == "initialize" {
+          let result = Json::object({
+            "protocolVersion": Json::string("2025-03-26"),
+            "capabilities": Json::object({}),
+            "serverInfo": Json::object({ "name": Json::string("srv") }),
+          })
+          conn.send_response(200, "OK", extra_headers={
+            "content-type": "application/json",
+            "Mcp-Session-Id": "sid123",
+          })
+          conn
+          ..write(
+            Json::object({
+              "jsonrpc": Json::string("2.0"),
+              "id": id,
+              "result": result,
+            }).stringify(),
+          )
+          .end_response()
+        } else if rpc_method == "notifications/initialized" {
+          conn.send_response(202, "Accepted")
+          conn.end_response()
+        } else if rpc_method == "tools/call" {
+          seen_session.push(
+            request.headers.get("mcp-session-id").unwrap_or("none"),
+          )
+          conn.send_response(200, "OK", extra_headers={
+            "content-type": "application/json",
+          })
+          conn
+          ..write(
+            Json::object({
+              "jsonrpc": Json::string("2.0"),
+              "id": id,
+              "result": Json::object({ "ok": Json::boolean(true) }),
+            }).stringify(),
+          )
+          .end_response()
+        } else {
+          conn.send_response(500, "Unknown")
+          conn.end_response()
+        }
+      })
+    })
+    let result = http_mcp_call_tool(
+      url="http://localhost:\{port}/mcp",
+      headers={},
+      tool_name="search",
+      arguments=Json::object({ "q": Json::string("moonbit") }),
+    )
+    inspect(result.stringify(), content="{\"ok\":true}")
+  })
+  inspect(seen_session.join(","), content="sid123")
+}
+
+///|
+#cfg(all(target="native", not(platform="windows")))
+async test "mcp http: decodes text event stream JSON-RPC response" {
+  @async.with_task_group(group => {
+    let server = @async_http.Server(@socket.Addr::parse("127.0.0.1:0"))
+    defer server.close()
+    let port = server.addr.port()
+    group.spawn_bg(no_wait=true, () => {
+      server.run_forever(allow_failure=true, (_request, body, conn) => {
+        let msg = @json.parse(body.read_all().text())
+        let rpc_method = match msg {
+          Object(obj) =>
+            match obj.get("method") {
+              Some(String(value)) => value
+              _ => ""
+            }
+          _ => ""
+        }
+        let id = match msg {
+          Object(obj) => obj.get("id").unwrap_or(Json::number(1.0, repr="1"))
+          _ => Json::number(1.0, repr="1")
+        }
+        if rpc_method == "initialize" {
+          conn.send_response(200, "OK", extra_headers={
+            "content-type": "application/json",
+          })
+          conn
+          ..write(
+            Json::object({
+              "jsonrpc": Json::string("2.0"),
+              "id": id,
+              "result": Json::object({
+                "protocolVersion": Json::string("2025-03-26"),
+                "capabilities": Json::object({}),
+                "serverInfo": Json::object({ "name": Json::string("srv") }),
+              }),
+            }).stringify(),
+          )
+          .end_response()
+        } else if rpc_method == "notifications/initialized" {
+          conn.send_response(202, "Accepted")
+          conn.end_response()
+        } else if rpc_method == "tools/call" {
+          conn.send_response(200, "OK", extra_headers={
+            "content-type": "text/event-stream",
+          })
+          let payload = Json::object({
+            "jsonrpc": Json::string("2.0"),
+            "id": id,
+            "result": Json::object({ "ok": Json::boolean(true) }),
+          }).stringify()
+          conn
+          ..write("event: message\n")
+          ..write("data: " + payload + "\n\n")
+          .end_response()
+        } else {
+          conn.send_response(500, "Unknown")
+          conn.end_response()
+        }
+      })
+    })
+    let result = http_mcp_call_tool(
+      url="http://localhost:\{port}/mcp",
+      headers={},
+      tool_name="search",
+      arguments=Json::object({ "q": Json::string("moonbit") }),
+    )
+    inspect(result.stringify(), content="{\"ok\":true}")
+  })
+}
+
+///|
+#cfg(all(target="native", not(platform="windows")))
+async test "mcp http: lists tools after initialize" {
+  @async.with_task_group(group => {
+    let server = @async_http.Server(@socket.Addr::parse("127.0.0.1:0"))
+    defer server.close()
+    let port = server.addr.port()
+    group.spawn_bg(no_wait=true, () => {
+      server.run_forever(allow_failure=true, (_request, body, conn) => {
+        let msg = @json.parse(body.read_all().text())
+        let rpc_method = match msg {
+          Object(obj) =>
+            match obj.get("method") {
+              Some(String(value)) => value
+              _ => ""
+            }
+          _ => ""
+        }
+        let id = match msg {
+          Object(obj) => obj.get("id").unwrap_or(Json::number(1.0, repr="1"))
+          _ => Json::number(1.0, repr="1")
+        }
+        if rpc_method == "initialize" {
+          conn.send_response(200, "OK", extra_headers={
+            "content-type": "application/json",
+            "Mcp-Session-Id": "sid-list",
+          })
+          conn
+          ..write(
+            Json::object({
+              "jsonrpc": Json::string("2.0"),
+              "id": id,
+              "result": Json::object({
+                "protocolVersion": Json::string("2025-03-26"),
+                "capabilities": Json::object({}),
+                "serverInfo": Json::object({ "name": Json::string("srv") }),
+              }),
+            }).stringify(),
+          )
+          .end_response()
+        } else if rpc_method == "notifications/initialized" {
+          conn.send_response(202, "Accepted")
+          conn.end_response()
+        } else if rpc_method == "tools/list" {
+          conn.send_response(200, "OK", extra_headers={
+            "content-type": "application/json",
+          })
+          conn
+          ..write(
+            Json::object({
+              "jsonrpc": Json::string("2.0"),
+              "id": id,
+              "result": Json::object({
+                "tools": Json::array([
+                  Json::object({
+                    "name": Json::string("search"),
+                    "description": Json::string("Search things"),
+                    "inputSchema": Json::object({
+                      "type": Json::string("object"),
+                    }),
+                  }),
+                ]),
+              }),
+            }).stringify(),
+          )
+          .end_response()
+        } else {
+          conn.send_response(500, "Unknown")
+          conn.end_response()
+        }
+      })
+    })
+    let tools = http_mcp_list_tools(url="http://localhost:\{port}/mcp", headers={})
+    @debug.debug_inspect(
+      tools,
+      content=(
+        #|[
+        #|  {
+        #|    name: "search",
+        #|    description: Some("Search things"),
+        #|    input_schema: Object({ "type": String("object") }),
+        #|  },
+        #|]
+      ),
+    )
+  })
+}

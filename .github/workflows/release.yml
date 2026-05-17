@@ -5,7 +5,6 @@ on:
   push:
     tags: ["v*"]
 
-# Disable all permissions at the workflow level (set minimal at job level)
 permissions: {}
 
 defaults:
@@ -28,65 +27,43 @@ jobs:
           - runner: macos-14
             asset_suffix: macos-arm64
     runs-on: ${{ matrix.runner }}
-    timeout-minutes: 30
+    timeout-minutes: 40
     permissions:
       contents: read
-      actions: write # required to save caches and upload artifacts
     steps:
       - name: Checkout
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
           persist-credentials: false
 
-      - name: Cache MoonBit toolchain
-        id: cache-moon
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+      - name: Install Nix
+        uses: cachix/install-nix-action@8aa03977d8d733052d78f4e008a241fd1dbf36b3 # v31.10.6
         with:
-          path: ~/.moon
-          key: ${{ runner.os }}-moon
-
-      - name: Install MoonBit
-        if: steps.cache-moon.outputs.cache-hit != 'true'
-        run: |
-          set -euxo pipefail
-          export PATH="$HOME/.moon/bin:$PATH"
-          curl -fsSL https://cli.moonbitlang.com/install/unix.sh | bash
-
-      - name: Add moon to PATH
-        run: |
-          set -euxo pipefail
-          echo "$HOME/.moon/bin" >> "$GITHUB_PATH"
-      
-      - name: Moon update
-        run: moon update
-
-      - name: Cache mooncakes
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
-        with:
-          path: .mooncakes
-          key: ${{ runner.os }}-mooncakes-${{ hashFiles('moon.mod.json') }}
+          extra_nix_config: |
+            experimental-features = nix-command flakes
 
       - name: Verify
         run: |
           set -euxo pipefail
-          moon check --target native --deny-warn --fmt
-          moon test --target native
-          bash scripts/e2e.sh
+          nix develop --command moon check --target native --deny-warn --fmt
+          nix develop --command moon test --target native --no-render
+          nix develop --command bash scripts/e2e.sh
+          nix develop --command env MCPX_BENCH_ENFORCE=1 MCPX_BENCH_CLI_RUNS=5 MCPX_BENCH_MEMORY_RUNS=3 bash scripts/benchmark.sh
 
       - name: Build native release
         run: |
           set -euxo pipefail
-          moon build --target native --release cli
+          nix build --out-link result
 
       - name: Package
         run: |
           set -euxo pipefail
           version="${GITHUB_REF_NAME}"
-          asset="mcp-cli-${version}-${{ matrix.asset_suffix }}.tar.gz"
+          asset="mcpx-${version}-${{ matrix.asset_suffix }}.tar.gz"
           mkdir -p dist
-          cp _build/native/release/build/cli/cli.exe dist/mcp-cli
-          chmod +x dist/mcp-cli
-          tar -czf "$asset" -C dist mcp-cli
+          cp result/bin/mcpx dist/mcpx
+          chmod +x dist/mcpx
+          tar -czf "$asset" -C dist mcpx
           echo "ASSET=$asset" >> "$GITHUB_ENV"
 
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2

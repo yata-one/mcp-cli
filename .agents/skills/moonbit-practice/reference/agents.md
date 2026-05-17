@@ -1200,7 +1200,7 @@ Embed external files as MoonBit code:
   "pre-build": [
     {
       "input": "data.txt",
-      "output": "embedded.mbt",
+      "output": "wasm.mbt",
       "command": ":embed -i $input -o $output --name data --text"
     },
     ... // more embed commands

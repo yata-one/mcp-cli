@@ -1,0 +1,7 @@
+import {
+  "yata-one/mcpx/core/host" @host,
+}
+
+import {
+  "moonbitlang/core/debug" @debug,
+} for "test"

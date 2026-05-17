@@ -1,0 +1,4 @@
+import {
+  "yata-one/mcpx/core/config" @config,
+  "yata-one/mcpx/core/protocol" @protocol,
+}

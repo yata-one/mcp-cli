@@ -7,9 +7,9 @@ cd "$root"
 PATH="$HOME/.moon/bin:$PATH"
 
 moon build --target native --release cli
-cli="$root/_build/native/release/build/cli/cli.exe"
+mcpx="$root/_build/native/release/build/cli/cli.exe"
 
-tmp="$(mktemp -d /tmp/mcp-cli-e2e.XXXXXX)"
+tmp="$(mktemp -d /tmp/mcpx-e2e.XXXXXX)"
 port_file="$tmp/port.txt"
 
 cleanup() {
@@ -17,6 +17,7 @@ cleanup() {
     kill "$http_pid" 2>/dev/null || true
     wait "$http_pid" 2>/dev/null || true
   fi
+  HOME="$tmp/home" XDG_CONFIG_HOME="$tmp/config" "$mcpx" daemon stop >/dev/null 2>&1 || true
   rm -rf "$tmp"
 }
 trap cleanup EXIT
@@ -39,29 +40,22 @@ def read_body(rfile, headers):
                 continue
             size = int(line, 16)
             if size == 0:
-                # Final CRLF (and optional trailers) — consume until blank line.
                 while True:
                     tail = rfile.readline()
                     if not tail or tail in (b"\r\n", b"\n"):
                         break
                 break
             chunks.append(rfile.read(size))
-            rfile.read(2)  # \r\n
+            rfile.read(2)
         return b"".join(chunks)
     length = int(headers.get("content-length", "0"))
     return rfile.read(length)
-
-def rpc_method(msg):
-    return msg.get("method", "")
-
-def rpc_id(msg, default=1):
-    return msg.get("id", default)
 
 class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         raw = read_body(self.rfile, {k.lower(): v for k, v in self.headers.items()}).decode("utf-8")
         msg = json.loads(raw) if raw else {}
-        method = rpc_method(msg)
+        method = msg.get("method", "")
 
         def send_json(obj, code=200):
             data = json.dumps(obj).encode("utf-8")
@@ -72,14 +66,15 @@ class Handler(BaseHTTPRequestHandler):
             self.wfile.write(data)
 
         if method == "initialize":
-            result = {
-                "protocolVersion": "2025-03-26",
-                "capabilities": {},
-                "serverInfo": {"name": "mock"},
-                "instructions": "hello\nworld",
-            }
-            resp = {"jsonrpc": "2.0", "id": rpc_id(msg, 1), "result": result}
-            send_json(resp)
+            send_json({
+                "jsonrpc": "2.0",
+                "id": msg.get("id", 1),
+                "result": {
+                    "protocolVersion": "2025-03-26",
+                    "capabilities": {},
+                    "serverInfo": {"name": "mock"},
+                },
+            })
             return
 
         if method == "notifications/initialized":
@@ -88,54 +83,44 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         if method == "tools/list":
-            tools = [
-                {
-                    "name": "echo",
-                    "description": "Echo text",
-                    "inputSchema": {
-                        "type": "object",
-                        "properties": {"text": {"type": "string"}},
-                        "required": ["text"],
-                    },
-                },
-                {
-                    "name": "no_text",
-                    "description": "No text result",
-                    "inputSchema": {"type": "object"},
-                },
-            ]
-            resp = {
+            send_json({
                 "jsonrpc": "2.0",
-                "id": rpc_id(msg, 2),
-                "result": {"tools": tools},
-            }
-            send_json(resp)
+                "id": msg.get("id", 2),
+                "result": {
+                    "tools": [
+                        {
+                            "name": "echo",
+                            "description": "Echo text",
+                            "inputSchema": {
+                                "type": "object",
+                                "properties": {"text": {"type": "string"}},
+                                "required": ["text"],
+                            },
+                        }
+                    ]
+                },
+            })
             return
 
         if method == "tools/call":
             params = msg.get("params", {})
-            name = params.get("name", "")
             args = params.get("arguments", {}) or {}
-            if name == "echo":
-                text = args.get("text", "")
-                result = {"content": [{"type": "text", "text": text}]}
-            else:
-                result = {"content": [{"type": "image", "url": "x"}]}
-            resp = {"jsonrpc": "2.0", "id": rpc_id(msg, 3), "result": result}
-            send_json(resp)
+            send_json({
+                "jsonrpc": "2.0",
+                "id": msg.get("id", 3),
+                "result": {"content": [{"type": "text", "text": args.get("text", "")}]},
+            })
             return
 
         self.send_response(500)
         self.end_headers()
 
     def log_message(self, format, *args):
-        # silence
         pass
 
 httpd = HTTPServer(("127.0.0.1", 0), Handler)
-port = httpd.server_address[1]
 with open(port_file, "w") as f:
-    f.write(str(port))
+    f.write(str(httpd.server_address[1]))
     f.flush()
 httpd.serve_forever()
 PY
@@ -154,96 +139,58 @@ if [[ -z "$port" ]]; then
   exit 1
 fi
 
-cfg="$tmp/http.json"
-cat >"$cfg" <<EOF
+url="http://127.0.0.1:$port/mcp"
+
+assert_tool_list() {
+  if [[ "$1" != *"Tools"* || "$1" != *"  echo"* ]]; then
+    echo "expected tool list with echo, got: $1" >&2
+    exit 1
+  fi
+}
+
+assert_echo_call() {
+  if [[ "$1" != "$2" ]]; then
+    echo "expected call output '$2', got: $1" >&2
+    exit 1
+  fi
+}
+
+assert_daemon_status() {
+  local expected="Daemon: not running"
+  if [[ "$2" == "true" ]]; then
+    expected="Daemon: running"
+  fi
+  if [[ "$1" != "$expected" ]]; then
+    echo "expected daemon status '$expected', got: $1" >&2
+    exit 1
+  fi
+}
+
+echo "[http] direct URL info"
+out="$($mcpx info "$url")"
+assert_tool_list "$out"
+
+echo "[http] direct URL call"
+out="$($mcpx call "$url" echo '{"text":"hi"}')"
+assert_echo_call "$out" "hi"
+
+echo "[config] configured HTTP via ~/.config/mcpx/mcpServers.jsonc"
+config_home="$tmp/config"
+mkdir -p "$config_home/mcpx"
+cat >"$config_home/mcpx/mcpServers.jsonc" <<EOF_CFG
 {
-  // JSONC + trailing commas
+  // JSONC + trailing comma
   "mcpServers": {
-    "srv": { "url": "http://127.0.0.1:$port/mcp", },
+    "srv": { "transport": "http", "url": "$url", },
   },
 }
-EOF
+EOF_CFG
+out="$(HOME="$tmp/home" XDG_CONFIG_HOME="$config_home" "$mcpx" info srv)"
+assert_tool_list "$out"
+out="$(HOME="$tmp/home" XDG_CONFIG_HOME="$config_home" "$mcpx" call srv echo '{"text":"cfg"}')"
+assert_echo_call "$out" "cfg"
 
-env_cmd=(env MCP_NO_DAEMON=1 MCP_MAX_RETRIES=0 MCP_TIMEOUT=2)
-
-echo "[http] list"
-out="$("${env_cmd[@]}" "$cli" -c "$cfg")"
-expected=$'srv: hello\n  tools:\n    - srv/echo: Echo text\n    - srv/no_text: No text result'
-[[ "$out" == "$expected" ]]
-
-echo "[config] skill config discovery"
-home="$tmp/home"
-mkdir -p "$home/.agents/skills/test-skill"
-cat >"$home/.agents/skills/test-skill/mcp-cli.jsonc" <<EOF
-{
-  "mcpServers": {
-    "srv": { "url": "http://127.0.0.1:$port/mcp" }
-  }
-}
-EOF
-work="$tmp/work"
-mkdir -p "$work"
-out="$(cd "$work" && env HOME="$home" MCP_NO_DAEMON=1 MCP_MAX_RETRIES=0 MCP_TIMEOUT=2 "$cli")"
-[[ "$out" == "$expected" ]]
-
-echo "[config] project config discovery (.jsonc)"
-proj="$tmp/proj"
-mkdir -p "$proj/.git" "$proj/.agents" "$proj/sub"
-cat >"$proj/.agents/mcp-cli.jsonc" <<EOF
-{
-  "mcpServers": {
-    "srv": { "url": "http://127.0.0.1:$port/mcp" }
-  }
-}
-EOF
-empty_home="$tmp/empty_home"
-mkdir -p "$empty_home"
-out="$(cd "$proj/sub" && env HOME="$empty_home" MCP_NO_DAEMON=1 MCP_MAX_RETRIES=0 MCP_TIMEOUT=2 "$cli")"
-[[ "$out" == "$expected" ]]
-
-echo "[http] grep"
-out="$("${env_cmd[@]}" "$cli" -c "$cfg" grep '*o*')"
-expected=$'List grep results (<server>/<tool> in detail):\n\nsrv/echo: Echo text\n\nsrv/no_text: No text result'
-[[ "$out" == "$expected" ]]
-
-echo "[http] call echo (text-first)"
-out="$("${env_cmd[@]}" "$cli" -c "$cfg" call srv echo '{"text":"hi"}')"
-[[ "$out" == "hi" ]]
-
-echo "[http] call no_text (json fallback)"
-out="$("${env_cmd[@]}" "$cli" -c "$cfg" call srv no_text '{}')"
-[[ "$out" == \{* ]]
-
-echo "[cli] ambiguous server/tool requires subcommand"
-set +e
-err="$("${env_cmd[@]}" "$cli" -c "$cfg" srv/echo 2>&1 >/dev/null)"
-code="$?"
-set -e
-[[ "$code" == "1" ]]
-[[ "$err" == *"ambiguous command"* ]]
-
-echo "[network] connection refused => exit 3"
-unused_port="$(
-  python3 - <<'PY'
-import socket
-s = socket.socket()
-s.bind(("127.0.0.1", 0))
-p = s.getsockname()[1]
-s.close()
-print(p)
-PY
-)"
-bad="$tmp/bad.json"
-cat >"$bad" <<EOF
-{ "mcpServers": { "bad": { "url": "http://127.0.0.1:$unused_port/mcp" } } }
-EOF
-set +e
-"${env_cmd[@]}" "$cli" -c "$bad" info bad >/dev/null 2>&1
-code="$?"
-set -e
-[[ "$code" == "3" ]]
-
-echo "[stdio] call"
+echo "[stdio] configured stdio call"
 stdio_py="$tmp/stdio_server.py"
 cat >"$stdio_py" <<'PY'
 import json, sys
@@ -253,8 +200,7 @@ def send(obj):
     sys.stdout.flush()
 
 for line in sys.stdin:
-    line = line.strip()
-    if not line:
+    if not line.strip():
         continue
     msg = json.loads(line)
     method = msg.get("method", "")
@@ -266,43 +212,40 @@ for line in sys.stdin:
                 "protocolVersion": "2025-03-26",
                 "capabilities": {},
                 "serverInfo": {"name": "stdio-mock"},
-                "instructions": "hi",
-            }
+            },
         })
     elif method == "tools/list":
         send({
             "jsonrpc": "2.0",
             "id": msg.get("id", 2),
-            "result": {
-                "tools": [
-                    {"name":"echo","description":"Echo text","inputSchema":{"type":"object"}}
-                ]
-            }
+            "result": {"tools": [{"name":"echo","description":"Echo text","inputSchema":{"type":"object"}}]},
         })
     elif method == "tools/call":
-        params = msg.get("params", {})
-        args = params.get("arguments", {}) or {}
-        text = args.get("text", "")
+        args = (msg.get("params", {}).get("arguments", {}) or {})
         send({
             "jsonrpc": "2.0",
             "id": msg.get("id", 3),
-            "result": {"content":[{"type":"text","text":text}]}
+            "result": {"content":[{"type":"text","text":args.get("text", "")}]},
         })
-    else:
-        # ignore notifications
-        pass
 PY
-
-stdio_cfg="$tmp/stdio.json"
-cat >"$stdio_cfg" <<EOF
+cat >"$config_home/mcpx/mcpServers.jsonc" <<EOF_CFG
 {
   "mcpServers": {
-    "s": { "command": "python3", "args": ["-u", "$stdio_py"] }
+    "stdio": {
+      "transport": "stdio",
+      "command": "python3",
+      "args": ["-u", "$stdio_py"]
+    }
   }
 }
-EOF
+EOF_CFG
+out="$(HOME="$tmp/home" XDG_CONFIG_HOME="$config_home" "$mcpx" info stdio)"
+assert_tool_list "$out"
+out="$(HOME="$tmp/home" XDG_CONFIG_HOME="$config_home" "$mcpx" call stdio echo '{"text":"stdio"}')"
+assert_echo_call "$out" "stdio"
 
-out="$("${env_cmd[@]}" "$cli" -c "$stdio_cfg" call s echo '{"text":"hi"}')"
-[[ "$out" == "hi" ]]
+echo "[daemon] status smoke"
+out="$(HOME="$tmp/home" XDG_CONFIG_HOME="$config_home" "$mcpx" daemon status)"
+assert_daemon_status "$out" "false"
 
 echo "OK: e2e passed"

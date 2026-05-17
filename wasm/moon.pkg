@@ -1,0 +1,23 @@
+import {
+  "moonbitlang/core/json" @json,
+  "yata-one/mcpx/core/auth" @auth,
+  "yata-one/mcpx/core/host" @host,
+  "yata-one/mcpx/core/protocol" @mcp_client,
+}
+
+import {
+  "moonbitlang/core/bench" @bench,
+} for "test"
+
+options(
+  link: {
+    "js": {
+      "exports": [ "mcpx_tool_schema", "mcpx_tool_run", "mcpx_tool_reduce" ],
+      "format": "esm",
+    },
+    "wasm-gc": {
+      "exports": [ "mcpx_tool_schema", "mcpx_tool_run", "mcpx_tool_reduce" ],
+      "use-js-builtin-string": true,
+    },
+  },
+)
